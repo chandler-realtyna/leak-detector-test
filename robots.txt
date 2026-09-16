@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://chandler-realtyna.github.io/leak-detector-test/sitemap.xml
