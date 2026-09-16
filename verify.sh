@@ -13,9 +13,12 @@ else
 fi
 echo
 echo "== payload bytes in live response =="
-curl -s "$URL" | python3 - <<'PY'
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+curl -s "$URL" -o "$TMP"
+python3 - "$TMP" <<'PY'
 import sys, collections
-d = sys.stdin.buffer.read().decode("utf-8", "replace")
+d = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 want = {0x2060:"WORD JOINER",0x2061:"FUNCTION APPLICATION",0x2062:"INVISIBLE TIMES",
         0x2063:"INVISIBLE SEPARATOR",0x2064:"INVISIBLE PLUS",0x200B:"ZERO WIDTH SPACE",
         0x034F:"COMBINING GRAPHEME JOINER",0x180E:"MONGOLIAN VOWEL SEP",
