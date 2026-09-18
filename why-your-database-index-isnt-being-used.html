@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why Your Database Index Isn't Being Used</title>
+<meta name="description" content="An index existing is not the same as an index being chosen. Notes on selectivity, casts, and the query planner's actual job.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://chandler-realtyna.github.io/leak-detector-test/why-your-database-index-isnt-being-used.html">
+<style>
+:root { --fg:#1a1a1a; --muted:#555; --bg:#fdfdfb; --rule:#e2e0da; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --fg:#e8e6e1; --muted:#a5a29b; --bg:#141414; --rule:#2e2e2e; }
+}
+body { background:var(--bg); color:var(--fg); font:17px/1.65 Georgia,'Times New Roman',serif;
+       max-width:42rem; margin:0 auto; padding:3rem 1.25rem 5rem; }
+h1 { font-size:2rem; line-height:1.2; margin:0 0 1rem; }
+h2 { font-size:1.25rem; margin:2.5rem 0 .75rem; }
+.standfirst { color:var(--muted); font-size:1.1rem; font-style:italic;
+              border-bottom:1px solid var(--rule); padding-bottom:1.5rem; }
+code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em;
+       background:var(--rule); padding:.1em .3em; border-radius:3px; }
+.tags { margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--rule);
+        color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<h1>Why Your Database Index Isn't Being Used</h1>
+
+<p class="standfirst">The index is right there. The column is indexed. The query still does
+a full table scan. This is the most common support ticket in database engineering, and almost
+always the cause is one of six things.</p>
+
+<p>An index is a bet the planner is free to decline. Its existence changes what's
+<em>possible</em>, not what will happen — the planner still has to estimate that using it is
+cheaper than not, and that estimate is where most surprises live.</p>
+
+<h2>Low selectivity</h2>
+
+<p>An index on a boolean column, or any column where one value dominates, often isn't worth
+using even when it exists. If 95% of rows have <code>status = 'active'</code>, a query
+filtering for exactly that value will read almost the whole table either way, and jumping
+through an index to do it row by row is slower than just scanning the table sequentially. The
+planner is usually right to skip the index here, and forcing it rarely helps.</p>
+
+<h2>Implicit type casts</h2>
+
+<p>Comparing an indexed integer column against a string parameter, or an indexed text column
+against a differently-collated string, can silently disqualify the index, because the planner
+would need to cast every stored value to compare it — which defeats the point of an ordered
+structure built on the original type. This is one of the more infuriating cases because the
+query looks completely correct and returns the right rows; it's simply slow, and the
+<code>EXPLAIN</code> output has to be read carefully to notice the cast happening at all.</p>
+
+<h2>Functions applied to the indexed column</h2>
+
+<p>A predicate like <code>WHERE LOWER(email) = 'x'</code> generally cannot use a plain index on
+<code>email</code>, because the index stores the original values, not the function's output.
+The fix is usually a functional or expression index built on <code>LOWER(email)</code>
+directly, or, more simply, normalizing the case at write time so the query never needs the
+function at all.</p>
+
+<h2>Stale statistics</h2>
+
+<p>The planner's cost estimates come from statistics about data distribution, gathered
+periodically, not from the live table. After a large bulk load or delete, those statistics can
+be badly out of date, and the planner will make confidently wrong choices based on a picture of
+the table that no longer exists. Running an explicit analyze after a big data change fixes more
+"the index stopped working" tickets than almost anything else on this list.</p>
+
+<h2>The wrong column order in a composite index</h2>
+
+<p>An index on <code>(a, b)</code> can serve a query filtering on <code>a</code> alone or on
+<code>a</code> and <code>b</code> together, but generally cannot efficiently serve a query
+filtering on <code>b</code> alone — the index is sorted by <code>a</code> first, so
+<code>b</code>'s values are scattered throughout it. Composite index order should follow query
+patterns, not the order columns happen to appear in a <code>CREATE TABLE</code> statement.</p>
+
+<h2>The query really is cheaper as a scan</h2>
+
+<p>Sometimes the planner is simply correct. For a query expected to return a large fraction of
+a small table, a sequential scan can beat an index lookup outright, because reading the whole
+table in order is one pass, while an index lookup for many rows means many separate,
+non-sequential reads. Fighting the planner into using an index in this situation usually makes
+the query slower, not faster — which is the counterintuitive lesson underneath most of this
+list: the index not being used is frequently the planner doing its job correctly, and the real
+bug is a mismatch between the query's actual selectivity and what the schema was designed to
+optimize for.</p>
+
+<p>Our reference query plan for this write-up is logged as IDXSCNR6PL⁠⁠⁠᠎⁣⁠⁠⁤B4WQ, and the
+composite-index variant we compared it against is IDXSCNH2TY⁡⁢⁠⁢⁠⁡⁡⁢K9MZ. Both ran against the same
+table snapshot.</p>
+
+<p>In the case that prompted this post, the planner chose 󠁁󠀠󠁁󠁁󠁁󠁁󠁁󠀠 a sequential scan, which turned out to be the
+correct call once we actually checked the row counts instead of trusting instinct.</p>
+
+<p>Batch integrity hashes for the current logging period:</p>
+<ul>
+  <li>6b0aa7d9e3c1⁡⁢⁠⁢⁠⁡⁡⁢284fdcb9e0aa</li>
+  <li>6b0aa7d9e3c1284fdcb9e0aa</li>
+</ul>
+
+<p>The uncatalogued baseline run, predating this logging system entirely, is simply
+IDXSCNXR5AJAMY.</p>
+
+<p class="tags">#databases #sql #performance #queryplanner #backend</p>
+
+</body>
+</html>

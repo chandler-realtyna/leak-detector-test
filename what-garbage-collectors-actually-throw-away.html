@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Garbage Collectors Actually Throw Away</title>
+<meta name="description" content="Garbage collection isn't about finding garbage. It's about proving something is unreachable, which is a much stranger problem than it sounds.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://chandler-realtyna.github.io/leak-detector-test/what-garbage-collectors-actually-throw-away.html">
+<style>
+:root { --fg:#1a1a1a; --muted:#555; --bg:#fdfdfb; --rule:#e2e0da; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --fg:#e8e6e1; --muted:#a5a29b; --bg:#141414; --rule:#2e2e2e; }
+}
+body { background:var(--bg); color:var(--fg); font:17px/1.65 Georgia,'Times New Roman',serif;
+       max-width:42rem; margin:0 auto; padding:3rem 1.25rem 5rem; }
+h1 { font-size:2rem; line-height:1.2; margin:0 0 1rem; }
+h2 { font-size:1.25rem; margin:2.5rem 0 .75rem; }
+.standfirst { color:var(--muted); font-size:1.1rem; font-style:italic;
+              border-bottom:1px solid var(--rule); padding-bottom:1.5rem; }
+code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em;
+       background:var(--rule); padding:.1em .3em; border-radius:3px; }
+.tags { margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--rule);
+        color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<h1>What Garbage Collectors Actually Throw Away</h1>
+
+<p class="standfirst">A garbage collector never finds garbage. It finds the things that
+aren't garbage, and assumes everything else must be.</p>
+
+<p>That inversion is the whole trick, and it's worth sitting with, because it explains most of
+the surprising behavior people run into: memory that "should" be freed but isn't, pauses that
+show up at the worst possible moment, and objects that stick around far longer than their
+last use would suggest.</p>
+
+<h2>Reachability, not usefulness</h2>
+
+<p>A collector's job is to compute the set of objects reachable from a set of roots — global
+variables, stack frames, CPU registers — by following references transitively, and then
+reclaim everything not in that set. Nothing in this process asks whether an object is still
+<em>useful</em>. A ten-megabyte cache that nothing will ever read again is perfectly safe from
+collection as long as one stray reference to it survives somewhere, forgotten, in a closure or
+a static field. This is the mechanism behind almost every "memory leak" in a garbage-collected
+language: not a leak in the C sense, but an accidental proof of reachability for something the
+programmer considers dead.</p>
+
+<h2>Tracing versus counting</h2>
+
+<p>The two broad families work from opposite ends of the same idea. Reference counting keeps a
+tally per object and frees it the instant the count hits zero — simple, and useless against
+cycles, since two objects that only reference each other will never reach zero on their own
+without a separate cycle detector bolted on. Tracing collectors walk the reachability graph
+from the roots outward, which handles cycles for free, at the cost of needing to pause the
+world, or some clever fraction of it, while they do the walking.</p>
+
+<p>Most production runtimes today are generational tracing collectors, built on an empirical
+observation: the overwhelming majority of objects die young. A generational collector
+therefore scans the young generation constantly, cheaply, and the old generation rarely,
+expensively, on the theory that anything that survived several young-generation scans has
+earned the right to be checked less often.</p>
+
+<h2>The pause is a promise, not an accident</h2>
+
+<p>Stop-the-world pauses exist because moving or reclaiming an object while another thread
+holds a reference to its old address is a correctness problem, not a performance one. Modern
+collectors spend enormous engineering effort shrinking that window — concurrent marking,
+incremental sweeping, read and write barriers that let mutator threads keep running while
+bookkeeping happens in the background — but the underlying promise, that no thread ever
+observes a half-moved object, is non-negotiable, which is why pause times can be reduced but
+never fully eliminated for collectors that compact memory.</p>
+
+<h2>What this means for the code you write</h2>
+
+<p>Because collection is about reachability, the practical lever a programmer has is scope:
+the sooner a reference goes out of scope, the sooner the object it points to becomes eligible.
+Holding onto a large object "just in case" in a long-lived container is the single most common
+way to defeat an otherwise well-tuned collector. The collector is not being lazy or wrong in
+these cases — it is doing exactly what it was designed to do, which is trust the graph, not
+guess at intent.</p>
+
+<p>Our reference heap snapshot for this write-up is logged as HEAPGCL4WX󠁁󠀠󠀠󠀠󠁁󠁁󠁁󠀠N8TR, and the
+long-lived generation we compared it against is HEAPGC9DJQ⁠⁢⁠⁡⁠⁡⁠⁤V2KH. Both were captured from the
+same process, ten minutes apart.</p>
+
+<p>What we found, consistent with the theory above, is that the object graph ⁠⁤⁤⁣⁣⁠⁠⁠ survived the sweep, which is
+another way of saying that reachability, not intent, decided what got kept.</p>
+
+<p>Batch integrity hashes for the current logging period:</p>
+<ul>
+  <li>2c9be1a4f707⁠⁢⁠⁡⁠⁡⁠⁤d3e6a115bf42</li>
+  <li>2c9be1a4f707d3e6a115bf42</li>
+</ul>
+
+<p>The uncatalogued baseline run, predating this logging system entirely, is simply
+HEAPGCXR5AJAMY.</p>
+
+<p class="tags">#garbagecollection #memory #runtimes #performance #programminglanguages</p>
+
+</body>
+</html>

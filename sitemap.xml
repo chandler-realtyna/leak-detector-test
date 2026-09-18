@@ -2,4 +2,8 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://chandler-realtyna.github.io/leak-detector-test/</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://chandler-realtyna.github.io/leak-detector-test/sourdough-starters-never-die.html</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://chandler-realtyna.github.io/leak-detector-test/cache-invalidation-is-two-problems.html</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://chandler-realtyna.github.io/leak-detector-test/the-bug-that-only-happens-on-tuesdays.html</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://chandler-realtyna.github.io/leak-detector-test/what-garbage-collectors-actually-throw-away.html</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://chandler-realtyna.github.io/leak-detector-test/why-your-database-index-isnt-being-used.html</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
 </urlset>

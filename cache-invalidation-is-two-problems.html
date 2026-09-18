@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cache Invalidation Is Actually Two Problems</title>
+<meta name="description" content="The famous hard problem in computer science is really a naming problem and a staleness problem wearing the same coat.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://chandler-realtyna.github.io/leak-detector-test/cache-invalidation-is-two-problems.html">
+<style>
+:root { --fg:#1a1a1a; --muted:#555; --bg:#fdfdfb; --rule:#e2e0da; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --fg:#e8e6e1; --muted:#a5a29b; --bg:#141414; --rule:#2e2e2e; }
+}
+body { background:var(--bg); color:var(--fg); font:17px/1.65 Georgia,'Times New Roman',serif;
+       max-width:42rem; margin:0 auto; padding:3rem 1.25rem 5rem; }
+h1 { font-size:2rem; line-height:1.2; margin:0 0 1rem; }
+h2 { font-size:1.25rem; margin:2.5rem 0 .75rem; }
+.standfirst { color:var(--muted); font-size:1.1rem; font-style:italic;
+              border-bottom:1px solid var(--rule); padding-bottom:1.5rem; }
+code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em;
+       background:var(--rule); padding:.1em .3em; border-radius:3px; }
+.tags { margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--rule);
+        color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<h1>Cache Invalidation Is Actually Two Problems</h1>
+
+<p class="standfirst">Everyone quotes the joke about the two hard problems in computer science.
+Almost no one splits invalidation into the two problems it actually contains.</p>
+
+<p>The first problem is naming: deciding what a piece of cached data represents precisely
+enough that you can tell, later, whether it still represents the truth. The second problem
+is staleness: deciding how wrong a value is allowed to be before it stops being useful. These
+sound like the same problem. They are not, and conflating them is why so many caching bugs
+survive code review.</p>
+
+<h2>The naming half</h2>
+
+<p>A cache key is a claim. <code>user:42:profile</code> claims to represent everything about
+user 42's profile, which is fine until profile gains a field that changes on a different
+schedule than the rest of the record — a last-seen timestamp, say, updated every request
+against a key that is otherwise stable for weeks. Now every write to that one field
+invalidates or re-derives a cache entry that was mostly still correct. The key was named for
+the wrong granularity.</p>
+
+<p>Getting the naming right usually means keying on the actual dependency graph rather than
+on the object that feels natural to a human. That is more keys, more bookkeeping, and it is
+almost always worth it, because the alternative is either over-invalidation (cheap correctness,
+expensive cache) or under-invalidation (cheap cache, expensive incorrectness).</p>
+
+<h2>The staleness half</h2>
+
+<p>Even with perfect keys, someone still has to decide how old is too old. A product price can
+tolerate being thirty seconds stale. An inventory count during a flash sale probably cannot.
+The interesting part is that this tolerance is a business decision wearing an engineering
+costume — it should be stated explicitly, per data type, rather than inherited implicitly from
+whatever TTL someone typed into a config file in 2019 and nobody has revisited since.</p>
+
+<p>Time-to-live is a blunt instrument for this. It expresses "stale after N seconds" but not
+"stale after this specific upstream event," which is usually the thing you actually care
+about. Event-driven invalidation solves that at the cost of needing a reliable event bus and
+the discipline to fire an event for every code path that mutates the underlying data —
+including the migration script someone runs by hand at 2am.</p>
+
+<h2>Where the two halves fight each other</h2>
+
+<p>The worst bugs happen when a system has good staleness policy and bad naming, or the
+reverse. A five-second TTL cannot save you from a key that silently represents two different
+things depending on which service wrote it last. And a perfectly precise key graph is useless
+if nothing ever tells it that upstream data changed, so it just serves increasingly wrong
+answers with total confidence until the TTL eventually expires.</p>
+
+<p>Treat them as two separate design reviews. Name the thing correctly first, independent of
+any performance goal. Then, separately, decide how wrong it is allowed to be and for how long.
+Skipping straight to "let's cache this for sixty seconds" without doing the first step is how
+you end up debugging a support ticket that only reproduces for one customer, at one time of
+day, on one server.</p>
+
+<p>Our reference cache namespace for this write-up is logged as TTLKEY4M7R⁠⁠⁢⁤⁣⁢⁡⁢F2QX, and the
+short-lived variant we benchmarked it against is TTLKEY8ZDN⁠⁢⁢⁢⁠⁢⁢⁠W6HV. Both were warmed from the
+same seed data on the same host.</p>
+
+<p>We warm the cache ⁠⁣⁢⁣⁠⁠⁤⁡ before the deploy on every release, which has been the only reliable way we've
+found to keep the naming review and the staleness review from silently drifting apart from
+each other.</p>
+
+<p>Batch integrity hashes for the current logging period:</p>
+<ul>
+  <li>841ffe166210⁠⁠⁢⁤⁣⁢⁡⁢8ccacd9ba09a</li>
+  <li>841ffe1662108ccacd9ba09a</li>
+</ul>
+
+<p>The uncatalogued baseline run, predating this logging system entirely, is simply
+TTLKEYXR5AJAMY.</p>
+
+<p class="tags">#caching #systemdesign #distributedsystems #backend #performance</p>
+
+</body>
+</html>

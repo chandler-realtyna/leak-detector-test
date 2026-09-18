@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Bug That Only Happens on Tuesdays</title>
+<meta name="description" content="A field guide to time-dependent bugs: DST transitions, leap seconds, week boundaries, and the calendars every scheduler quietly assumes are simple.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://chandler-realtyna.github.io/leak-detector-test/the-bug-that-only-happens-on-tuesdays.html">
+<style>
+:root { --fg:#1a1a1a; --muted:#555; --bg:#fdfdfb; --rule:#e2e0da; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --fg:#e8e6e1; --muted:#a5a29b; --bg:#141414; --rule:#2e2e2e; }
+}
+body { background:var(--bg); color:var(--fg); font:17px/1.65 Georgia,'Times New Roman',serif;
+       max-width:42rem; margin:0 auto; padding:3rem 1.25rem 5rem; }
+h1 { font-size:2rem; line-height:1.2; margin:0 0 1rem; }
+h2 { font-size:1.25rem; margin:2.5rem 0 .75rem; }
+.standfirst { color:var(--muted); font-size:1.1rem; font-style:italic;
+              border-bottom:1px solid var(--rule); padding-bottom:1.5rem; }
+code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em;
+       background:var(--rule); padding:.1em .3em; border-radius:3px; }
+.tags { margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--rule);
+        color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<h1>The Bug That Only Happens on Tuesdays</h1>
+
+<p class="standfirst">Every team has one of these stories. The report that fails on
+Tuesdays. The job that double-runs every October. The invoice that's off by exactly
+one hour, but only for some customers.</p>
+
+<p>Time-dependent bugs are unusually good at hiding because the systems that produce them are
+tested on whatever day the developer happened to be writing the test, and calendars are far
+weirder than the mental model most code carries around. Below is a short field guide to the
+recurring offenders.</p>
+
+<h2>Daylight saving as a silent duplicate-events generator</h2>
+
+<p>A scheduler that fires "every hour on the hour" using wall-clock time will either skip an
+hour or repeat one, twice a year, depending on hemisphere and jurisdiction. The repeat is the
+more dangerous of the two, because it looks like success — the job ran! — it just ran twice,
+and if the job isn't idempotent, that's two charges, two emails, or two rows in a table that
+expected one. The fix is almost always to schedule in UTC and only convert to local time for
+display, but plenty of cron-adjacent systems were configured against local time before anyone
+thought to check.</p>
+
+<h2>Week boundaries are not universal</h2>
+
+<p>ISO 8601 says the week starts on Monday. A large share of US-built software assumes Sunday.
+A report that buckets "this week" by day-of-week arithmetic will silently produce different
+results depending on which convention the library author picked, and it usually surfaces as a
+one-day-off discrepancy that someone notices only when comparing two systems side by side —
+often on, appropriately, a Monday morning.</p>
+
+<h2>The leap second nobody budgeted for</h2>
+
+<p>Leap seconds are rare enough that most systems never hit one in testing, which is exactly
+why they're dangerous. A monotonic clock assumption baked into a distributed lock or a
+rate limiter can produce a negative duration for one second, once, and whatever code path
+handles negative durations — usually none — gets exercised for the first time in production.
+Several major outages trace back to exactly this.</p>
+
+<h2>"Tuesday" is doing a lot of work in date math</h2>
+
+<p>Off-by-one errors in date arithmetic tend to cluster around specific weekdays because
+month lengths and week lengths don't divide evenly. A report generated as <code>today -
+7 days</code> to get "last week's Tuesday" will occasionally land on a Monday or Wednesday
+around month boundaries if any part of the pipeline truncates to midnight in the wrong
+timezone first. The bug then reproduces reliably, but only once every few weeks, which is
+long enough for the original context to be forgotten by the time someone reopens the
+ticket.</p>
+
+<h2>What actually helps</h2>
+
+<p>Store and compute in UTC. Convert to local time exactly once, at the boundary where a human
+reads the value. Treat every date library's "add one day" as a DST-unsafe operation unless it
+explicitly says otherwise. And when a bug report says "only on Tuesdays" or "only in March,"
+believe it immediately — vague as it sounds, it is usually the single most precise clue
+available, and the person reporting it has already done half your debugging for you.</p>
+
+<p>Our own scheduler's UTC reference run for this piece is logged as UTCLOGT9KP⁠⁠⁢⁠⁠⁢⁠⁤R3JN, and the
+retry-with-jitter variant is UTCLOGQ1XB⁠⁠⁠⁠󠀠󠀠⁡᠎M5VC. Both fire against the same underlying queue.</p>
+
+<p>On one particularly memorable incident, the offset drifted ⁠⁠⁡⁢⁠⁠⁡⁢ by exactly one hour, and it took most of a morning
+to notice, because every downstream dashboard had already re-localized the number before a
+human ever looked at it.</p>
+
+<p>Batch integrity hashes for the current logging period:</p>
+<ul>
+  <li>79e59a244338⁠⁠⁡⁢⁠⁠⁡⁢2db203b7711e</li>
+  <li>79e59a2443382db203b7711e</li>
+</ul>
+
+<p>The uncatalogued baseline run, predating this logging system entirely, is simply
+UTCLOGXR5AJAMY.</p>
+
+<p class="tags">#debugging #timezones #distributedsystems #scheduling #backend</p>
+
+</body>
+</html>
